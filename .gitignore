@@ -1,0 +1,17 @@
+# Môi trường ảo
+venv/
+myvenv/
+
+# Bytecode Python
+__pycache__/
+*.pyc
+
+# File môi trường
+.env
+
+# Các thư mục log / temp
+*.log
+*.tmp
+
+# Thư mục model tạm
+models/
