@@ -65,6 +65,7 @@ def preprocess_inputs_pt(question, answer, bert_tokenizer, scaler: StandardScale
     numerical_features_val_std = scaler.transform([extra_number])
     numerical_features_val_std = torch.tensor(numerical_features_val_std, dtype=torch.float32).to(device)
     return input_ids, attention_mask, numerical_features_val_std
+
 def tokenize_inputs_pt(questions, essays, tokenizer, print_stats=False, max_length=512):
     input_ids_list = []
     attention_masks_list = []
@@ -106,16 +107,6 @@ def tokenize_inputs_pt(questions, essays, tokenizer, print_stats=False, max_leng
         "lengths_sequences": lengths_sequences,
     }
 def round_to_nearest_half_np(x, method='nearest'):
-    """
-    Vectorized rounding to nearest 0.5 for NumPy arrays.
-
-    Parameters:
-        x (array-like): Input number or array of numbers.
-        method (str): 'nearest', 'up', or 'down'
-
-    Returns:
-        np.ndarray: Rounded numbers
-    """
     x = np.asarray(x)  # Ensure input is a NumPy array
 
     if method == 'nearest':
