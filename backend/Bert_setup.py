@@ -6,7 +6,7 @@ import os
 import joblib
 from huggingface_hub import login, hf_hub_download
 from dotenv import load_dotenv
-from BERT_Model import BERTWithExtraFeature, round_to_nearest_half_np, preprocess_inputs_pt
+from bert_model import BERTWithExtraFeature, round_to_nearest_half_np, preprocess_inputs_pt
 # from transformers import AutoConfig
 load_dotenv()
 login(os.getenv("IELTS_HUGGINGFACE_API_KEY"))
