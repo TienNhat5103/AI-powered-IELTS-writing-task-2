@@ -15,48 +15,55 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2")
 BAND_DISCRIPTIOR_FILE = os.getenv("BAND_DISCRIPTIOR_FILE")
 print('GEMMA file load successfully')
-async def create_evaluation_prompt(question: str, essay: str, overall_score: float) -> str:
-    prompt = (
-        f"You are an IELTS Writing Task 2 examiner.\n"
-        f"Evaluate the following essay based on the official IELTS scoring criteria.\n\n"
-        f"Question:\n{question}\n\n"
-        f"Essay:\n{essay}\n\n"
-        f"The essay above received an overall IELTS Writing band score of {str(overall_score)}.\n\n"
-        f"As an IELTS examiner, evaluate the following essay based on the official IELTS scoring criteria.\n\n"
-        f"Return your evaluation strictly in the following JSON format:\n\n"
-        f"The breakdown score has to be consistent with the overall band score, and is an integer, and the average need to be equal to {str(overall_score)} .\n"
-        f"{{\n"
-        f'  "criteria": {{\n'
-        f'    "task_response": {{\n'
-        f'      "score": <score>,\n'
-        f'      "details": [<list of detailed feedback sentences>] (MUST NOT include any comma behind this list)\n'
-        f'    }},\n'
-        f'    "coherence_and_cohesion": {{\n'
-        f'      "score": <score>,\n'
-        f'      "details": [<list of detailed feedback sentences>] (MUST NOT include any comma behind this list)\n'
-        f'    }},\n'
-        f'    "lexical_resource": {{\n'
-        f'      "score": <score>,\n'
-        f'      "details": [<list of detailed feedback sentences>] (MUST NOT include any comma behind this list)\n'
-        f'    }},\n'
-        f'    "grammatical_range_and_accuracy": {{\n'
-        f'      "score": <score>,\n'
-        f'      "details": [<list of detailed feedback sentences>] (MUST NOT include any comma behind this list)\n'
-        f'    }}\n'
-        f'  }},\n'
-        f'  "feedback": {{\n'
-        f'    "strengths": [<list of strengths>],\n'
-        f'    "areasForImprovement": [<list of areas for improvement>]\n'
-        f'  }}\n'
-        f"}}\n\n"
-        f"Rules:\n"
-        f"- All keys and strings must use double quotes (\"\") according to strict JSON format.\n"
-        f"- Component scores must be consistent with the given overall band score.\n"
-        f"- For each 'details' list, clearly explain WHY the score was assigned, mentioning specific strengths, weaknesses, and examples from the essay.\n"
-        f"- Return ONLY the JSON object. Do not add any explanations, headers, markdown, or extra text before or after.\n"
-        f"- Following STRICTLY the JSON structure above to ensure the JSON is valid and parsable.\n"
+
+async def PromptMistral(band: float, question: str, essay: str) -> str:
+    PROMPT = """
+    Overall Band Score: {}
+
+    In this task, you are required to evaluate the following essay based on the official IELTS scoring criteria. 
+    Please provide detailed feedback for each of the four criteria, no need to give score for each part, keeping in mind that the essay received the band score above. 
+
+    ## Task Achievement:
+    - Evaluate how well the candidate has addressed the given task.
+    - Assess the clarity and coherence of the response in presenting ideas.
+    - Identify if the candidate has fully covered all parts of the task and supported arguments appropriately.
+
+    ## Coherence and Cohesion:
+    - Assess the overall organization and structure of the essay.
+    - Evaluate the use of linking devices to connect ideas and paragraphs.
+    - Identify if there is a logical flow of information.
+
+    ## Lexical Resource (Vocabulary):
+    - Examine the range and accuracy of vocabulary used in the essay.
+    - Point out specific mistakes in vocabulary, such as inaccuracies or overuse of certain words and Suggest modified versions or alternatives for the identified mistakes. [list of mistakes and rectify]
+    - Assess the appropriateness of vocabulary for the given context.
+
+    ## Grammatical Range and Accuracy:
+    - Evaluate the variety and complexity of sentence structures.
+    - Point out specific grammatical errors, such as incorrect verb forms or sentence construction and Suggest modified versions or corrections for the identified mistakes. [list of mistakes and rectify]
+    - Examine the use of punctuation and sentence formation.
+
+
+    ## Feedback and Additional Comments:
+    - Provide constructive feedback highlighting specific strengths and areas for improvement.
+    - Suggest strategies for enhancement in weaker areas.
+
+    ## Prompt:
+    {}
+
+    ## Essay:
+    {}
+
+    ## Evaluation:
+    {}"""
+
+    return PROMPT.format(
+        band,
+        question,
+        essay,
+        "",
     )
-    return prompt
+
 
 
 async def create_constructive_feedback_prompt(question: str, essay: str, overall_score: float) -> str:
@@ -111,7 +118,7 @@ async def create_constructive_feedback_prompt(question: str, essay: str, overall
 
 
 async def get_evaluation_feedback(user_id: str, overall_score: float, question: str , answer: str, client) -> str:
-    evaluation_prompt = await create_evaluation_prompt(question, answer, overall_score)
+    evaluation_prompt = await PromptMistral(band=overall_score, question=question, essay=answer)
     
     payload = {
         "model": "gemma-3-essay",
