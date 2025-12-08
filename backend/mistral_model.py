@@ -1,11 +1,9 @@
 from bert_setup import get_overall_score
 import asyncio
 import httpx
-import asyncio
 from dotenv import load_dotenv
 import os
 import json
-import httpx
 from google import genai
 from handle_json import read_json_from_string
 
@@ -63,8 +61,6 @@ async def PromptMistral(band: float, question: str, essay: str) -> str:
         essay,
         "",
     )
-
-
 
 async def create_constructive_feedback_prompt(question: str, essay: str, overall_score: float) -> str:
     prompt = (
