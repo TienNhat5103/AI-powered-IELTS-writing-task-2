@@ -1,0 +1,31 @@
+# FastAPI and web server
+fastapi==0.121.1
+uvicorn==0.34.0
+pydantic==2.12.4
+
+# HTTP client
+httpx==0.28.1
+
+# Environment variables
+python-dotenv==1.2.1
+
+# Google Generative AI
+google-generativeai==0.8.3
+
+# Machine Learning - BERT
+transformers==4.48.2
+torch==2.6.0
+tokenizers==0.21.0
+
+# Data processing
+pandas==2.3.3
+numpy==2.3.4
+scikit-learn==1.7.2
+scipy==1.16.3
+
+# Model utilities
+joblib==1.5.2
+huggingface-hub==0.36.0
+
+# Streamlit (for frontend)
+streamlit==1.42.0

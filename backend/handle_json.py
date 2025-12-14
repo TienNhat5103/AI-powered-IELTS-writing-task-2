@@ -28,11 +28,19 @@ def read_json_from_string(text: str) -> dict:
     """
     # Làm sạch dấu ngoặc “ ” trở thành " và loại bỏ fence ``` 
     cleaned = normalize_quotes(strip_json_fence(text))
+
     try:
         parsed = json.loads(cleaned)
+        if isinstance(parsed, dict):
+            top_keys = list(parsed.keys())
+        elif isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], dict):
+            # lấy keys của phần tử đầu tiên nếu list chứa dict
+            top_keys = list(parsed[0].keys())
+        else:
+            top_keys = []   
         return {
             "valid_json": True,
-            "top_keys": list(parsed.keys()),
+            "top_keys": top_keys,
             "parsed": parsed
         }
     except json.JSONDecodeError as e:

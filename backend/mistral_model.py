@@ -4,22 +4,28 @@ import httpx
 from dotenv import load_dotenv
 import os
 import json
+import time
 from google import genai
 from handle_json import read_json_from_string
 
-RETRY_DELAY = int(os.getenv("RETRY_DELAY"))
-MAX_RETRIES = int(os.getenv("MAX_RETRIES"))
+# Load environment variables
+load_dotenv()
+
+# Environment variables with safe defaults
+RETRY_DELAY = int(os.getenv("RETRY_DELAY", "3"))
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2")
 BAND_DISCRIPTIOR_FILE = os.getenv("BAND_DISCRIPTIOR_FILE")
-print('GEMMA file load successfully')
+OLLAMA_CHAT_ENDPOINT = os.getenv("OLLAMA_CHAT_ENDPOINT")
+OLLAMA_GEN_ENDPOINT = os.getenv("OLLAMA_GEN_ENDPOINT")
 
 async def PromptMistral(band: float, question: str, essay: str) -> str:
     PROMPT = """
     Overall Band Score: {}
 
     In this task, you are required to evaluate the following essay based on the official IELTS scoring criteria. 
-    Please provide detailed feedback for each of the four criteria, no need to give score for each part, keeping in mind that the essay received the band score above. 
+    Please provide detailed feedback for each of the four criteria, always keeping in mind that the essay received the overall score above. 
 
     ## Task Achievement:
     - Evaluate how well the candidate has addressed the given task.
@@ -111,22 +117,27 @@ async def create_constructive_feedback_prompt(question: str, essay: str, overall
     )
     return prompt
 
-
-
-async def get_evaluation_feedback(user_id: str, overall_score: float, question: str , answer: str, client) -> str:
+async def get_evaluation_mistral(user_id: str, overall_score: float, question: str , answer: str, client) -> str:
     evaluation_prompt = await PromptMistral(band=overall_score, question=question, essay=answer)
     
     payload = {
-        "model": "gemma-3-essay",
+        "model": "ielts-mistral:latest",
         "messages": [
             {"role": "user", "content": evaluation_prompt}
         ],
-        "stream": True,
         "options": {
-            "num_predict": 2048
+            "num_predict": 2048,
+            "temperature": 0.7
         }
     }
-
+    #payload = {
+            #"model": "ielts-mistral:latest",
+            #"prompt": evaluation_prompt,
+            #"options": {
+                #"num_predict": 2048,
+                #"temperature": 0.7
+            #}
+        #}
     timeout = httpx.Timeout(180.0, connect=10.0)
     try:
         async with httpx.AsyncClient(timeout=timeout) as http_client:
@@ -138,6 +149,8 @@ async def get_evaluation_feedback(user_id: str, overall_score: float, question: 
             for line in response.text.splitlines():
                 try:
                     data = json.loads(line)
+                    #evaluation_text += data.get("response", "") for generate endpoint
+                    #evaluation_text += data["message"]["content"] for chat endpoint
                     evaluation_text += data["message"]["content"]
                 except Exception:
                     continue
@@ -147,23 +160,23 @@ async def get_evaluation_feedback(user_id: str, overall_score: float, question: 
         return "Failed to get feedback from Ollama."
 
     gemini_prompt = (
-        f"You are a strict JSON fixer and formatter.\n"
-        f"Your task is to take the following possibly malformed JSON and output a strictly valid, properly formatted JSON object—nothing else.\n\n"
-        f"---\n"
-        f"{evaluation_text}\n"
-        f"---\n\n"
-        f"Rules:\n"
-        f"- Output only the JSON object. No code fences or any extra text.\n"
-        f"- Use only standard double quotes (\") for keys and string values.\n"
-        f"- Remove any trailing or leading commas; commas may only separate items.\n"
-        f"- Ensure all strings are properly opened, closed, and escaped (e.g. newlines as \\n, tabs as \\t).\n"
-        f"- Validate that braces and brackets match exactly.\n"
-        f"- The result must be parseable by JSON.parse() without errors.\n"
-    )
+            f"You are a strict JSON fixer and formatter.\n"
+            f"Your task is to take the following possibly malformed JSON and output a strictly valid, properly formatted JSON object—nothing else.\n\n"
+            f"---\n"
+            f"{evaluation_text}\n"
+            f"---\n\n"
+            f"Rules:\n"
+            f"- Output only the JSON object. No code fences or any extra text.\n"
+            f"- Use only standard double quotes (\") for keys and string values.\n"
+            f"- Remove any trailing or leading commas; commas may only separate items.\n"
+            f"- Ensure all strings are properly opened, closed, and escaped (e.g. newlines as \\n, tabs as \\t).\n"
+            f"- Validate that braces and brackets match exactly.\n"
+            f"- The result must be parseable by JSON.parse() without errors.\n"
+        )
 
     def run_gemini():
         return client.models.generate_content(
-            model="models/gemini-2.0-flash-001",
+            model="gemini-2.5-flash-lite",#gemini-2.5-flash
             contents=gemini_prompt
         )
 
@@ -171,16 +184,13 @@ async def get_evaluation_feedback(user_id: str, overall_score: float, question: 
     corrected_json = gemini_response.text
     return corrected_json
 
-
-import time  # Import the time module to measure execution time
-
 async def get_constructive_feedback(user_id: str, overall_score: float, question: str , answer: str, client, band_descriptors) -> str:
     constructive_prompt = await create_constructive_feedback_prompt(question, answer, overall_score)
 
     def run_gemini():
         start_time = time.time()  # Start the timer
         result = client.models.generate_content(
-            model="models/gemini-2.0-flash-001",
+            model="gemini-2.5-flash-lite",#gemini-2.5-flash
             contents=[band_descriptors, constructive_prompt]
         )
         end_time = time.time()  # End the timer
@@ -191,20 +201,19 @@ async def get_constructive_feedback(user_id: str, overall_score: float, question
     constructive_text = constructive_response.text
     return constructive_text
 
-async def get_feedback(question: str, answer: str) -> dict:
+async def get_feedback(user_id: str, question: str, answer: str) -> dict:
     """
     Compute overall score and return merged evaluation + constructive feedback.
     """
     # 1. Compute IELTS score
     overall_score = float(get_overall_score(question, answer))
-    user_id = "test_user_id"  # Replace with actual user ID
 
     # 2. Initialize clients
     client = genai.Client(api_key=GEMINI_API_KEY)
     client_2 = genai.Client(api_key=GEMINI_API_KEY_2)
     band_descriptors = client.files.upload(file=BAND_DISCRIPTIOR_FILE)
 
-    evaluation_task = get_evaluation_feedback(user_id, overall_score, question, answer, client_2)
+    evaluation_task = get_evaluation_mistral(user_id, overall_score, question, answer, client_2) # sau nhớ xóa await
     constructive_task = get_constructive_feedback(user_id, overall_score, question, answer, client, band_descriptors)
 
     evaluation_text, constructive_text = await asyncio.gather(evaluation_task, constructive_task)
