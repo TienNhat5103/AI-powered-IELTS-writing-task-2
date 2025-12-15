@@ -1,6 +1,4 @@
-import pandas as pd
 from transformers import  BertTokenizer
-import numpy as np
 import torch
 import os
 import joblib

@@ -22,10 +22,10 @@ OLLAMA_GEN_ENDPOINT = os.getenv("OLLAMA_GEN_ENDPOINT")
 
 async def PromptMistral(band: float, question: str, essay: str) -> str:
     PROMPT = """
-    Overall Band Score: {}
+    Overall Band Score: 
 
     In this task, you are required to evaluate the following essay based on the official IELTS scoring criteria. 
-    Please provide detailed feedback for each of the four criteria, always keeping in mind that the essay received the overall score above. 
+    Please provide detailed feedback for each of the four criteria, always keeping in mind that the essay received an overall IELTS Writing band score {}. 
 
     ## Task Achievement:
     - Evaluate how well the candidate has addressed the given task.
@@ -117,7 +117,7 @@ async def create_constructive_feedback_prompt(question: str, essay: str, overall
     )
     return prompt
 
-async def get_evaluation_mistral(user_id: str, overall_score: float, question: str , answer: str, client) -> str:
+async def get_evaluation_mistral( overall_score: float, question: str , answer: str, client) -> str:
     evaluation_prompt = await PromptMistral(band=overall_score, question=question, essay=answer)
     
     payload = {
@@ -172,11 +172,14 @@ async def get_evaluation_mistral(user_id: str, overall_score: float, question: s
             f"- Ensure all strings are properly opened, closed, and escaped (e.g. newlines as \\n, tabs as \\t).\n"
             f"- Validate that braces and brackets match exactly.\n"
             f"- The result must be parseable by JSON.parse() without errors.\n"
+            f"- For each criterion, extract the numeric score (e.g., '6.5') and put it in a field 'suggested_band_score',then remove this numeric score from the feedback text.\n"
+            f"- Remember to have suggested_band_score field in each criterion and overall_band_score field in overall_feedback."
+            f"- Do NOT include any top-level keys other than:'Task Achievement', 'Coherence and Cohesion', 'Lexical Resource', 'Grammatical Range and Accuracy', and 'Overall Band Score'."
         )
 
     def run_gemini():
         return client.models.generate_content(
-            model="gemini-2.5-flash-lite",#gemini-2.5-flash
+            model="gemini-2.5-flash",#gemini-2.5-flash-lite
             contents=gemini_prompt
         )
 
@@ -184,13 +187,13 @@ async def get_evaluation_mistral(user_id: str, overall_score: float, question: s
     corrected_json = gemini_response.text
     return corrected_json
 
-async def get_constructive_feedback(user_id: str, overall_score: float, question: str , answer: str, client, band_descriptors) -> str:
+async def get_constructive_feedback(overall_score: float, question: str , answer: str, client, band_descriptors) -> str:
     constructive_prompt = await create_constructive_feedback_prompt(question, answer, overall_score)
 
     def run_gemini():
         start_time = time.time()  # Start the timer
         result = client.models.generate_content(
-            model="gemini-2.5-flash-lite",#gemini-2.5-flash
+            model="gemini-2.5-flash",#gemini-2.5-flash-lite
             contents=[band_descriptors, constructive_prompt]
         )
         end_time = time.time()  # End the timer
@@ -201,7 +204,8 @@ async def get_constructive_feedback(user_id: str, overall_score: float, question
     constructive_text = constructive_response.text
     return constructive_text
 
-async def get_feedback(user_id: str, question: str, answer: str) -> dict:
+
+async def get_feedback(question: str, answer: str) -> dict:
     """
     Compute overall score and return merged evaluation + constructive feedback.
     """
@@ -213,8 +217,8 @@ async def get_feedback(user_id: str, question: str, answer: str) -> dict:
     client_2 = genai.Client(api_key=GEMINI_API_KEY_2)
     band_descriptors = client.files.upload(file=BAND_DISCRIPTIOR_FILE)
 
-    evaluation_task = get_evaluation_mistral(user_id, overall_score, question, answer, client_2) # sau nhớ xóa await
-    constructive_task = get_constructive_feedback(user_id, overall_score, question, answer, client, band_descriptors)
+    evaluation_task = get_evaluation_mistral(overall_score, question, answer, client_2) # sau nhớ xóa await
+    constructive_task = get_constructive_feedback(overall_score, question, answer, client, band_descriptors)
 
     evaluation_text, constructive_text = await asyncio.gather(evaluation_task, constructive_task)
 
@@ -228,7 +232,6 @@ async def get_feedback(user_id: str, question: str, answer: str) -> dict:
         raise ValueError(f"Constructive JSON parse error: {const_res['error']}")
 
     return {
-        "user_id": user_id,
         "overall_score": overall_score,
         "evaluation_feedback": eval_res["parsed"],
         "constructive_feedback": const_res["parsed"]
