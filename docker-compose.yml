@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # Ollama service for language models
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ielts-ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - ielts-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: serve
+    restart: unless-stopped
+
+  # MongoDB service for data storage
+  mongodb:
+    image: mongo:latest
+    container_name: ielts-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - ielts-network
+    restart: unless-stopped
+
+  # Backend API service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ielts-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_GEN_ENDPOINT=http://ollama:11434/api/generate
+      - OLLAMA_CHAT_ENDPOINT=http://ollama:11434/api/chat
+      - MONGO_URI=mongodb://admin:password@mongodb:27017/ielts_writing_evaluation?authSource=admin
+      - PORT=8000
+    depends_on:
+      ollama:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+    networks:
+      - ielts-network
+    restart: unless-stopped
+    command: python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend service (optional)
+  frontend:
+    image: python:3.11-slim
+    container_name: ielts-frontend
+    ports:
+      - "8501:8501"
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    environment:
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - ielts-network
+    restart: unless-stopped
+    command: bash -c "pip install -r requirements.txt && streamlit run app.py --server.address=0.0.0.0"
+
+volumes:
+  ollama_data:
+  mongodb_data:
+
+networks:
+  ielts-network:
+    driver: bridge

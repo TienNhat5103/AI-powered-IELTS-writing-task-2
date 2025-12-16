@@ -85,13 +85,13 @@ def extract_scores(evaluation_json: dict) -> dict:
         # Extract scores from evaluation feedback
         for criterion, details in evaluation_feedback.items():
             if "suggested_band_score" in details:
-                score = details["suggested_band_score"]
+                score = float(details["suggested_band_score"])
                 criteria_scores_1[criterion] = score
 
         # Extract scores from constructive feedback
         for criterion, details in criteria.items():
             if "score" in details:
-                score = details["score"]
+                score = float(details["score"])
                 criteria_scores_2[criterion] = score
         # Combine both scores
         values1 = list(criteria_scores_1.values())
@@ -118,7 +118,6 @@ def extract_scores(evaluation_json: dict) -> dict:
 def postprocess_feedback(evaluation_json: dict) -> dict:
     ''' Xóa các cột overall_score, suggested_band_score, suggested_overall_band_score, score trong feedback trả về '''
     data = evaluation_json
-
     try:
         if "overall_score" in data:
             del data["overall_score"]
@@ -127,10 +126,8 @@ def postprocess_feedback(evaluation_json: dict) -> dict:
         for criterion, details in evaluation_feedback.items():
             if "suggested_band_score" in details:
                 del details["suggested_band_score"]
-        if "overall_band_score" in evaluation_feedback:
-            overall_band_score = evaluation_feedback["overall_band_score"]
-            if "suggested_overall_band_score" in overall_band_score:
-                del overall_band_score["suggested_overall_band_score"]
+        if "Overall Band Score" in evaluation_feedback:
+            del evaluation_feedback["Overall Band Score"]
         
         constructive_feedback = data["constructive_feedback"]
         criteria = constructive_feedback["criteria"]

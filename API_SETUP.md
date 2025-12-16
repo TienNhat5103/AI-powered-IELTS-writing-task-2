@@ -1,161 +1,81 @@
-# IELTS Writing Task 2 Evaluation API - Setup Guide
+# IELTS Writing Task 2 Evaluation API – Setup
 
 ## Tổng quan
+Backend FastAPI chấm IELTS Writing Task 2:
+- BERT: tính điểm tổng
+- Mistral (Ollama): feedback chi tiết
+- Grammar fixer (CoEdit): sửa lỗi, trả về highlight lỗi + bản đã sửa
+- MongoDB: lưu phiên đánh giá
 
-API này tự động chấm và đánh giá bài viết IELTS Writing Task 2 bằng cách kết hợp:
-- **BERT model**: Tính điểm tổng (band score)
-- **Mistral model** (via Ollama): Tạo feedback chi tiết
-- **Google Gemini**: Tạo constructive feedback và sửa lỗi JSON
+## Yêu cầu
+- Python 3.10+ (hoặc dùng Docker Compose)
+- Docker & Docker Compose (khuyến nghị)
+- Ollama (nếu chạy native) và đã pull model Mistral
 
-## Yêu cầu hệ thống
+## Cấu hình môi trường (`.env`)
+- `OLLAMA_GEN_ENDPOINT` (vd: http://localhost:11434/api/generate)
+- `OLLAMA_CHAT_ENDPOINT` (vd: http://localhost:11434/api/chat)
+- `MONGO_URI` (vd: mongodb://admin:password@localhost:27017/ielts_writing_evaluation?authSource=admin)
+- `PORT` (mặc định 8000)
 
-- Python 3.8+
-- Ollama đã cài đặt và chạy
-- Model Mistral đã được build trong Ollama
+## Chạy bằng Docker Compose (đề xuất)
+```bash
 
-## Cài đặt
-
-### 1. Cài đặt dependencies
-
-```powershell
-# Kích hoạt virtual environment
-& "D:/AI-powered IELTS writing task 2/myvenv/Scripts/Activate.ps1"
-
-# Cài đặt packages (nếu chưa có)
-pip install fastapi uvicorn httpx python-dotenv google-generativeai pydantic
 ```
+Services: Backend `:8000`, Frontend `:8501`, Ollama `:11434`, MongoDB `:27017`.
 
-### 2. Cấu hình environment variables
-
+## Chạy thủ công (native)
 ```powershell
-# Copy file template
-Copy-Item .env.example .env
-
-# Chỉnh sửa .env với thông tin của bạn
-notepad .env
-```
-
-Cần điền:
-- `GEMINI_API_KEY` và `GEMINI_API_KEY_2`: Lấy từ [Google AI Studio](https://ai.google.dev/)
-- `IELTS_HUGGINGFACE_API_KEY`: Token từ [HuggingFace](https://huggingface.co/settings/tokens)
-- `BAND_DISCRIPTIOR_FILE`: Đường dẫn tới file mô tả band descriptor
-
-### 3. Build Ollama model
-
-```powershell
-cd models
-ollama create ielts-mistral -f Modelfile
-cd ..
-```
-
-### 4. Chạy Ollama server (terminal riêng)
-
-```powershell
+# 1) Start Ollama
 ollama serve
-```
+ollama pull mistral
 
-## Chạy ứng dụng
+# 2) Start MongoDB (hoặc dùng service sẵn có)
 
-```powershell
+# 3) Backend
 cd backend
-python main.py
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-API sẽ chạy tại: `http://localhost:8080`
+## API Endpoints (port 8000)
 
-## API Endpoints
+### Health
+- `GET /` → { message }
+- `GET /health`, `/ready`, `/live`, `/version`
 
-### 1. Health Check
-```
-GET /
-```
+### Đánh giá bài luận
+- `POST /evaluate_essay`
+  - body: `{ "question": "...", "answer": "..." }`
+  - returns: `{ detailed_feedback, overall_criteria_scores }`
 
-### 2. Chỉ tính điểm BERT
-```
-POST /api/score
-```
+### Sửa ngữ pháp
+- `POST /grammar_correction`
+  - body JSON `{ "answer": "..." }` (hoặc query param `answer`)
+  - returns: `corrected_text` (plain), `with_errors` (HTML lỗi+fix), `fixed_only` (HTML đã sửa)
 
-**Request body:**
-```json
-{
-  "question": "Some people believe that technology has made our lives more complicated. To what extent do you agree or disagree?",
-  "essay": "In recent years, technology has become an integral part of our daily lives..."
-}
-```
+### Kết hợp chấm + sửa
+- `POST /essay_process`
+  - body: `{ "question": "...", "answer": "..." }`
+  - returns: feedback + scores + 3 dạng grammar như trên
 
-**Response:**
-```json
-{
-  "overall_score": 6.5
-}
-```
-
-### 3. Đánh giá đầy đủ (BERT + Mistral + Gemini)
-```
-POST /api/feedback
-```
-
-**Request body:** (giống `/api/score`)
-
-**Response:**
-```json
-{
-  "user_id": "test_user_id",
-  "overall_score": 6.5,
-  "evaluation_feedback": {
-    "criteria": {
-      "task_response": {...},
-      "coherence_and_cohesion": {...},
-      "lexical_resource": {...},
-      "grammatical_range_and_accuracy": {...}
-    },
-    "feedback": {...}
-  },
-  "constructive_feedback": {
-    "criteria": {...},
-    "overall_feedback": {...}
-  }
-}
-```
-
-## Test với curl/PowerShell
-
+## Test nhanh (PowerShell)
 ```powershell
-# Test score endpoint
-$body = @{
-    question = "Some people believe that technology has made our lives more complicated. To what extent do you agree or disagree?"
-    essay = "In recent years, technology has become an integral part of our daily lives. While some argue it complicates things, I believe technology has simplified many aspects of life."
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8080/api/score" -Method Post -Body $body -ContentType "application/json"
+$body = @{question = "Sample question"; answer = "Sample answer"} | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:8000/evaluate_essay" -Method Post -Body $body -ContentType "application/json"
 ```
 
-## Swagger Documentation
-
-Sau khi chạy server, truy cập:
-- Swagger UI: `http://localhost:8080/docs`
-- ReDoc: `http://localhost:8080/redoc`
+## Swagger
+- `http://localhost:8000/docs`
+- `http://localhost:8000/redoc`
 
 ## Troubleshooting
+- Ollama lỗi: `docker-compose logs ollama` hoặc `ollama list`
+- Model thiếu: `ollama pull mistral`
+- Mongo lỗi: kiểm tra `MONGO_URI` và service Mongo đang chạy
 
-### Lỗi: "OLLAMA_CHAT_ENDPOINT connection refused"
-- Kiểm tra Ollama đang chạy: `ollama list`
-- Khởi động: `ollama serve`
-
-### Lỗi: "Model not found"
-- Build lại model: `ollama create ielts-mistral -f backend/Modelfile`
-
-### Lỗi: "GEMINI_API_KEY not found"
-- Kiểm tra file `.env` đã tạo và điền API keys
-
-## Cấu trúc project
-
-```
-backend/
-├── main.py                 # FastAPI application
-├── mistral_model.py        # Mistral + Gemini integration
-├── bert_setup.py           # BERT model setup
-├── bert_model.py           # BERT architecture
-├── handle_json.py          # JSON parsing utilities
-└── Modelfile              # Ollama model definition
-```
+## Cấu trúc chính
+- backend/: FastAPI, models, grammar fixer
+- frontend/: Streamlit UI
+- docker-compose.yml: khởi động Ollama + Mongo + Backend + Frontend
+  "question": "Some people believe that technology has made our lives more complicated. To what extent do you agree or disagree?",

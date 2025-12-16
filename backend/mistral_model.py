@@ -37,7 +37,7 @@ async def PromptMistral(band: float, question: str, essay: str) -> str:
     - Evaluate the use of linking devices to connect ideas and paragraphs.
     - Identify if there is a logical flow of information.
 
-    ## Lexical Resource (Vocabulary):
+    ## Lexical Resource:
     - Examine the range and accuracy of vocabulary used in the essay.
     - Point out specific mistakes in vocabulary, such as inaccuracies or overuse of certain words and Suggest modified versions or alternatives for the identified mistakes. [list of mistakes and rectify]
     - Assess the appropriateness of vocabulary for the given context.
@@ -179,7 +179,7 @@ async def get_evaluation_mistral( overall_score: float, question: str , answer: 
 
     def run_gemini():
         return client.models.generate_content(
-            model="gemini-2.5-flash",#gemini-2.5-flash-lite
+            model="gemini-2.5-flash-lite",#gemini-2.5-flash
             contents=gemini_prompt
         )
 
@@ -193,7 +193,7 @@ async def get_constructive_feedback(overall_score: float, question: str , answer
     def run_gemini():
         start_time = time.time()  # Start the timer
         result = client.models.generate_content(
-            model="gemini-2.5-flash",#gemini-2.5-flash-lite
+            model="gemini-2.5-flash-lite",#gemini-2.5-flash
             contents=[band_descriptors, constructive_prompt]
         )
         end_time = time.time()  # End the timer
