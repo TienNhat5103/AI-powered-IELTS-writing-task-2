@@ -23,7 +23,7 @@ An AI-powered application that provides comprehensive feedback on IELTS Writing 
 
 Watch the demo video to see the application in action:
 
-📺 [View Demo Videos](https://drive.google.com/drive/folders/1wuYDB5hfMQvdxWB4jrQ53XLtJlMlRLld?usp=sharing)
+📺 [View Demo Videos](https://drive.google.com/file/d/1-QJz7wNcu2qABMJfJ9nNFCIONQXlLHIj/view?usp=sharing)
 
 
 ## 📋 Tech Stack
