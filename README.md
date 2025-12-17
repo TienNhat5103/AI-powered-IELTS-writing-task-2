@@ -19,31 +19,12 @@ An AI-powered application that provides comprehensive feedback on IELTS Writing 
 
 - **💾 MongoDB Storage**: All evaluations are saved for future reference
 
-## 🏗️ Architecture
+## � Demo Video
 
-```
-┌─────────────────────────────────────┐
-│   Streamlit Frontend (Port 8501)    │
-│   - User Input                       │
-│   - Result Display                   │
-└─────────────────┬───────────────────┘
-                  │ HTTP Requests
-                  ▼
-┌─────────────────────────────────────┐
-│   FastAPI Backend (Port 8000)       │
-│   - BERT (Essay Scoring)             │
-│   - Mistral (Feedback Generation)    │
-│   - T5 CoEdit (Grammar Correction)   │
-│   - MongoDB Storage                  │
-└─────────────────┬───────────────────┘
-                  │
-        ┌─────────┼─────────┐
-        ▼         ▼         ▼
-    ┌────────┐ ┌─────────┐ ┌────────────┐
-    │ Ollama │ │MongoDB  │ │ Local LLMs │
-    │ (LLM)  │ │(Port...)│ │            │
-    └────────┘ └─────────┘ └────────────┘
-```
+Watch the demo video to see the application in action:
+
+📺 [View Demo Videos](https://drive.google.com/drive/folders/1wuYDB5hfMQvdxWB4jrQ53XLtJlMlRLld?usp=sharing)
+
 
 ## 📋 Tech Stack
 
