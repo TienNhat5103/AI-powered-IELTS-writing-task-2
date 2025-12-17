@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from pymongo import MongoClient
 import asyncio
 import uuid
-import datetime
+from datetime import datetime, timezone
 # Import from our modules
 from mistral_model import get_feedback
 from grammar import get_annotated_fixed_essay
@@ -115,8 +115,8 @@ async def essay_process(request: EssayEvaluationRequest):
     Stores all results under a shared session_id.
     """
     session_id = str(uuid.uuid4())
-    now = datetime.utcnow()
-
+    #get now
+    now = datetime.now(timezone.utc)
     # Get detailed feedback from Mistral model and grammar corrections
     detailed_feedback = get_feedback(request.question, request.answer)
     grammar_result = get_annotated_fixed_essay(request.answer)
