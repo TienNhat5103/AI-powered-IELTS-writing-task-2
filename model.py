@@ -15,8 +15,6 @@ class BERTWithExtraFeature(nn.Module):
             for param in layer.parameters():
                 param.requires_grad = True
 
-        # BatchNorm for numerical input
-        self.num_feature_norm = nn.BatchNorm1d(1)
 
         # Combined input size: 768 (BERT) + 1 (extra num)
         self.concat_input_dim = 768 + 1
@@ -38,7 +36,7 @@ class BERTWithExtraFeature(nn.Module):
 
         if extra_number.dim() == 1:
             extra_number = extra_number.unsqueeze(1)
-        normalized_num = self.num_feature_norm(extra_number)
+        normalized_num = extra_number
 
         concat = torch.cat((pooled_output, normalized_num), dim=1)
 
