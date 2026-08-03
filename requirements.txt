@@ -9,8 +9,18 @@ httpx==0.28.1
 # Environment variables
 python-dotenv==1.2.1
 
-# Google Generative AI
-google-generativeai==0.8.3
+# Google Gen AI SDK
+google-genai==1.40.0
+
+# Agent workflow orchestration
+langgraph==1.2.9
+langgraph-checkpoint-sqlite==3.1.0
+
+# OpenTelemetry tracing
+opentelemetry-api==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-instrumentation-fastapi==0.65b0
+opentelemetry-exporter-otlp-proto-http==1.44.0
 
 # Machine Learning - BERT
 transformers==4.48.2
@@ -29,3 +39,6 @@ huggingface-hub==0.36.0
 
 # Streamlit (for frontend)
 streamlit==1.42.0
+
+# MongoDB
+pymongo==4.11.0

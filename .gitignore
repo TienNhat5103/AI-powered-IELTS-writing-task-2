@@ -12,6 +12,9 @@ __pycache__/
 # Các thư mục log / temp
 *.log
 *.tmp
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 # Thư mục model tạm
 models/

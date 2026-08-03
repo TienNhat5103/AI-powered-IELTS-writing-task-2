@@ -1,159 +1,163 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-import uvicorn
-import os
-from dotenv import load_dotenv
-from pymongo import MongoClient
 import asyncio
-import uuid
+import logging
+import os
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-# Import from our modules
-from mistral_model import get_feedback
-from grammar import get_annotated_fixed_essay
-from caculate_score import extract_scores, postprocess_feedback
-load_dotenv()
 
-OLLAMA_GEN_ENDPOINT = os.getenv("OLLAMA_GEN_ENDPOINT")
-OLLAMA_CHAT_ENDPOINT = os.getenv("OLLAMA_CHAT_ENDPOINT")
+import uvicorn
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, field_validator
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+
+from backend.agents.orchestrator import IELTSWritingOrchestrator
+from backend.observability.telemetry import (
+    initialize_telemetry,
+    instrument_fastapi,
+    shutdown_telemetry,
+)
+
+
+load_dotenv()
+logger = logging.getLogger(__name__)
+telemetry_runtime = initialize_telemetry()
+
+# Legacy Ollama settings are intentionally disabled. The previous
+# Llama -> Gemini formatter flow is preserved as comments in
+# tools/feedback_generator.py.
+# OLLAMA_GEN_ENDPOINT = os.getenv("OLLAMA_GEN_ENDPOINT")
+# OLLAMA_CHAT_ENDPOINT = os.getenv("OLLAMA_CHAT_ENDPOINT")
+
 MONGO_URI = os.getenv("MONGO_URI")
 PORT = int(os.getenv("PORT", 8000))
-# async def get_evaluation_mistral(overall_score: float, question: str , answer: str, client) -> str:
-#     """Get detailed evaluation feedback from Mistral model via Ollama."""
-#     evaluation_prompt = await PromptMistral(band=overall_score, question=question, essay=answer)
-    
-#     payload = {
-#         "model": "ielts-mistral:latest",
-#         "prompt": evaluation_prompt,
-#         "options": {
-#             "num_predict": 2048,
-#             "temperature": 0.7
-#         }
-#     }
-#     timeout = httpx.Timeout(180.0, connect=10.0)
-#     try:
-#         async with httpx.AsyncClient(timeout=timeout) as http_client:
-#             response = await http_client.post(OLLAMA_GEN_ENDPOINT, json=payload)
-#             response.raise_for_status()
 
-#             # Ghép nội dung trả về dạng JSON line (stream)
-#             evaluation_text = ""
-#             for line in response.text.splitlines():
-#                 try:
-#                     data = json.loads(line)
-#                     #evaluation_text += data["message"]["content"] for chat endpoint
-#                     evaluation_text += data.get("response", "") #for generate endpoint
-#                 except Exception:
-#                     continue
-#     except httpx.HTTPError as e:
-#         print(f"Error calling Ollama: {e}")
-#         return "Failed to get feedback from Ollama."
-#     return evaluation_text
+client = (
+    MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
+    if MONGO_URI
+    else None
+)
+db = client.ielts_writing_evaluation if client is not None else None
+orchestrator = IELTSWritingOrchestrator()
 
-# Initialize FastAPI app
-#CONNECT TO MONGODB
-client = MongoClient(MONGO_URI)
-db = client.ielts_writing_evaluation
-
-#define collections
-evaluations_collection = db.evaluations
-annotation = db.annotations
 
 class EssayEvaluationRequest(BaseModel):
     question: str
     answer: str
 
+    @field_validator("question", "answer")
+    @classmethod
+    def must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await orchestrator.start()
+    try:
+        yield
+    finally:
+        try:
+            await orchestrator.close()
+        finally:
+            try:
+                if client is not None:
+                    client.close()
+            finally:
+                shutdown_telemetry()
+
+
 app = FastAPI(
     title="IELTS Writing Task 2 Evaluation API",
-    description="API for evaluating IELTS Writing Task 2 essays using BERT and Mistral models",
-    version="1.0.0"
+    description="IELTS evaluation agent using LangGraph, BERT, Gemini, and CoEdit T5",
+    version="1.1.0",
+    lifespan=lifespan,
 )
+instrument_fastapi(app, telemetry_runtime)
+
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to the IELTS Writing Task 2 Evaluation API!"}
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
 @app.get("/ready")
 async def readiness_check():
-    return {"status": "ready"}
+    return {
+        "status": "ready",
+        "langgraph": "checkpointed",
+        "mongodb": "configured" if db is not None else "disabled",
+    }
+
+
 @app.get("/live")
 async def liveness_check():
     return {"status": "alive"}
+
+
 @app.get("/version")
 async def version_check():
-    return {"version": "1.0.0"}
-
+    return {"version": "1.1.0"}
 
 
 @app.post("/evaluate_essay")
-async def evaluate_essay(request: EssayEvaluationRequest):    
-    # Get detailed feedback from Mistral model
-    detailed_feedback = await get_feedback(request.question, request.answer)
-    overall_criteria_scores = extract_scores(detailed_feedback)
-    detailed_feedback = postprocess_feedback(detailed_feedback)
+async def evaluate_essay(request: EssayEvaluationRequest):
+    return await orchestrator.evaluate_essay(request.question, request.answer)
 
-    return {
-        "detailed_feedback": detailed_feedback,
-        "overall_criteria_scores": overall_criteria_scores
-    }
 
 @app.post("/grammar_correction")
 async def grammar_correction(answer: str):
     """Get grammar corrections with error and fix highlights."""
-    result = await get_annotated_fixed_essay(answer)
-    return {
-        "corrected_text": result['corrected_text'],
-        "with_errors": result['with_errors'],
-        "fixed_only": result['fixed_only']
-    }
+    if not answer.strip():
+        raise HTTPException(status_code=422, detail="Essay answer must not be empty.")
+    return await orchestrator.correct_grammar(answer)
+
 
 @app.post("/essay_process")
 async def essay_process(request: EssayEvaluationRequest):
-    """
-    Combined endpoint to run evaluation and grammar correction in one session.
-    Stores all results under a shared session_id.
-    """
-    session_id = str(uuid.uuid4())
-    #get now
+    """Run evaluation and grammar correction under one LangGraph session."""
     now = datetime.now(timezone.utc)
-    # Get detailed feedback from Mistral model and grammar corrections
-    detailed_feedback = get_feedback(request.question, request.answer)
-    grammar_result = get_annotated_fixed_essay(request.answer)
+    result = await orchestrator.process_essay(request.question, request.answer)
 
-    feedback, grammar_data = await asyncio.gather(detailed_feedback, grammar_result)
-    overall_criteria_scores = extract_scores(feedback)
-    feedback = postprocess_feedback(feedback)
+    if db is not None:
+        try:
+            await asyncio.gather(
+                asyncio.to_thread(
+                    db.evaluations.insert_one,
+                    {
+                        "session_id": result["session_id"],
+                        "question": request.question,
+                        "answer": request.answer,
+                        "detailed_feedback": result["detailed_feedback"],
+                        "overall_criteria_scores": result["overall_criteria_scores"],
+                        "created_at": now,
+                    },
+                ),
+                asyncio.to_thread(
+                    db.grammar_corrections.insert_one,
+                    {
+                        "session_id": result["session_id"],
+                        "original_text": request.answer,
+                        "corrected_text": result["corrected_text"],
+                        "with_errors": result["with_errors"],
+                        "fixed_only": result["fixed_only"],
+                        "created_at": now,
+                    },
+                ),
+            )
+        except PyMongoError:
+            logger.exception("MongoDB persistence failed for session %s", result["session_id"])
 
-    # Store evaluation results in MongoDB
-    evaluations_collection.insert_one({
-        "session_id": session_id,
-        "question": request.question,
-        "answer": request.answer,
-        "detailed_feedback": feedback,
-        "overall_criteria_scores": overall_criteria_scores,
-        "created_at": now
-    })
-    
-    # Store grammar correction results in MongoDB
-    annotation_collection = db.grammar_corrections
-    annotation_collection.insert_one({
-        "session_id": session_id,
-        "original_text": request.answer,
-        "corrected_text": grammar_data['corrected_text'],
-        "with_errors": grammar_data['with_errors'],
-        "fixed_only": grammar_data['fixed_only'],
-        "created_at": now
-    })
-    
-    return {
-        "session_id": session_id,
-        "detailed_feedback": feedback,
-        "overall_criteria_scores": overall_criteria_scores,
-        "corrected_text": grammar_data['corrected_text'],
-        "with_errors": grammar_data['with_errors'],
-        "fixed_only": grammar_data['fixed_only']
-    }
+    return result
+
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=True)
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=PORT, reload=True)
